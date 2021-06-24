@@ -1,0 +1,10 @@
+#!/bin/bash
+
+for f in ./*.vcsv
+do
+    [ -e "$f" ] || continue
+    #echo "$f"
+    g=$(echo "$f" | sed -e s/xh018_pe_/0u18_pmos_/g -)
+    #echo "$g"
+    mv "$f" "$g"
+done

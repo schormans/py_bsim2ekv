@@ -1,0 +1,219 @@
+* py_bsim2ekv: BSIM to EKV model conversion in python
+
+*An initial word of caution:* This tool is far from perfect, the code could do with cleanup, for some input data it can produce completely erroneous output results. Unfortunately, since the original tool that this work aims to recreate is completely unavailable, there is no way to cross-check the results to see if the problem lies in the process, or in this particular implementation of it. I would like to get to the root of these problems, but I have no time remaining to continue serious development. I considered it better to at least release the tool in its current state publicly, rather than completely abandon it in private. At least this way it may prove of some use, if only for experimentation.
+The output of this program should therefore be considered with caution; it is definitely not recommended to base designs on EKV models created by py_bsim2ekv!
+
+** Overview
+
+py_bsim2ekv aims to recreate the functionality of the now unavailable BSIM2EKV tool, originally developed by the [[https://www.epfl.ch/labs/iclab/ekv/model/][IC Lab at EPFL]]. The tool comprises a limited version of the ekv model (rewritten in python, largely using [[https://mpmath.org/][mpmath]]; this lets us do some tricks to solve some things more easily, but is slow), and functions to convert BSIM model parameters to EKV parameters. The conversion method essentially follows the procedure set out in the book chapter [[https://link.springer.com/chapter/10.1007%2F978-1-4020-8573-4_3][BSIM to EKV conversion]] from /'Structured Analog CMOS Design'/ (unfortunately the chapter itself is behind a paywall). The process should ideally be fully automatic, once the required parameters and simulation data are provided, but can sometimes need tweaking to get good parametric agreement. I would expect performance to be better with older larger nodes (e.g. 0.5µm), but have acheived decent results with a 0.18µm process.
+
+*The software assumes that you have some BSIM simulator to hand to generate input data*
+
+* Details
+
+** Key files
+
+ - ~py_bsim2ekv.py~: Primary file that includes all the fitting functions and routines for conversion.
+ - ~ekv.py~: Reconstruction of the EKV model, in accordance with [[https://www.epfl.ch/labs/iclab/wp-content/uploads/2019/02/ekv_v262.pdf][the v2.6 rev2 1998 spec]]. The model is modified in some small ways, and is not efficient or ideal. Mismatch and variability are not implemented, but could be easily added. Designed to generate ~MOS~ objects, with model parameters as attributes, and functions that return currents and derived quantities.
+ - ~example_py_bsim2ekv_run.ipynb~: A jupyter notebook that demonstrates the procedure for data import and running a conversion for example 0.18µm NMOS and PMOS simulation data. The NMOS dataset shows a fairly good result, with the EKV model matching the BSIM input data fairly well. The PMOS dataset shows a fairly poor result, particularly when calculating ~UCRIT~ and ~LAMBDA~.
+
+** Prerequisites
+
+ - A BSIM model and simulator (e.g. cadence, qucs, etc).
+   + Initial BSIM parameters
+   + Simulation results in accordance with the steps described below.
+ - Python 3, with the following components:
+   + matplotlib
+   + mpmath
+   + numpy
+   + scipy
+   + jupyter notebook (recommended)
+
+** Initial notes on the EKV model and PMOS devices
+
+*** Bulk referenced node voltages
+
+The EKV model always considers voltages with reference to the bulk, in the nominal NMOS case, this makes no difference, but should the bulk voltage be raised, or in the case of PMOS devices, this can become unintuitive. Voltages provided to the converter should be preprocessed to be in this bulk-referenced form already. There are some stages that require bulk voltage stepping, in these cases, voltages should be given referenced to the nominal bulk voltage, and the conversion step will adjust the other node voltages to compensate for bulk voltage changes appropriately.
+
+*N.B. for PMOS simulations:* To make the data export easier for the PMOS case, it is recommended to set bulk (and vdd) to be the ground reference, and define the node that would have been ground to be \(-V_{DD}\).
+
+*** PMOS handling
+
+The EKV model essentially considers PMOS devices as NMOS devices internally, but with the input voltages sign-flipped. Since the EKV model has been partially re-implemented in python here, such a sign-flipping preprocessor is not easy to implement elegantly. *Therefore, input node voltages must be pre-flipped by the user when being input to the converter. Pinchoff voltages from BSIM results must also be sign-flipped in the same way, as they are a form of node voltage* From the point of view of ~ekv.py~, p-type ~MOS~ objects have positive values for ~VTO~ and ~TCV~ the same as an n-type device. The only difference is the default value of ~eta~ that is set, and the polarity of the output currents from ~I_DS()~ and ~I_DB()~. After a full conversion therefore, PMOS values for ~VTO~ and ~TCV~ must be sign-flipped.
+
+*The easiest way to handle this is to apply sign-flipping to the BSIM voltage data just after it has been imported; this is implemented in the PMOS device example data.*
+
+** Running a conversion
+
+This section aims to summarize the steps presented in the original [[https://link.springer.com/chapter/10.1007%2F978-1-4020-8573-4_3][BSIM to EKV conversion]] chapter, with an emphasis on brevity. For full details of the process I recommend to consult the book itself. The aim is to state the simulations that must be performed, and how to feed the data to the converter. If all goes well, no manual intervention should be required, but this cannot be guaranteed. Hence, the option of running conversion sections one at a time is possible, where parameters can be hand-tweaked, and fitting steps can be re-run separately or in different orders if required.
+
+*** Input parameters and required data
+
+- Minimum transistor width and length, \(W_{min}\) and \(L_{min}\) respectively.
+- Supply voltage \(V_{DD}\).
+- Transistor sets:
+  + Wide/long (*WL*): if \(L_{min} \lt 0.35µm\), \(W_{max}/L_{max}\) = 10µm/10µm, else \(W_{max}/L_{max}\) = 25µm/25µm
+  + Wide/short set (*WS*): \(W_{max}/(L_{min}, 1.2L_{min}, 1.4L_{min}, 1.6L_{min}, 1.8L_{min}, 2L_{min}, 2.4L_{min}, 2.8L_{min}, 3.2L_{min}, 3.6L_{min}, 4L_{min})\)
+  + Narrow/long set (*NL*): \((W_{min}, 2W_{min})/L_{max}\)
+- BSIM parameters (directly extracted from model file):
+  + TNOM, TOX, XJ, NCH, U0, VSAT, WINT, LINT, BETA0, ALPHA1
+- Simulation results:
+  + When sweeping temperature, the following steps are recommended: ({-40,-20,27,80,120}ºC).
+  + Unless temperature is mentioned, simulate at T = TNOM.
+  + Each bullet has a variable name appended: the program expects these variables to contain the simulation data.
+  + For the *WL* transistor:
+    * Halved Specific current \(I_S/2\) across temperature. ~wl_is_temp_data~
+    * Pinchoff voltage as a function of gate voltage \(V_P = f(V_G)\) across temperature. ~wl_vp_vg_temp_data~
+    * Drain current as a function of gate voltage \(I_D = f(V_G)\) across bulk voltages, in the linear region (\(V_{DS}\) = 50mV is usually fine). ~wl_id_vg_vb_linear_data~
+      - For nMOS \(V_B\) should range from \(-0.5V_{DD}\) to 0
+      - For pMOS \(V_B\) should range from \(V_{DD}\) to \(V_{DD} + 0.5V_{DD}\)
+    * Drain current as a function of gate voltage \(I_D = f(V_G)\) across temperature, in the linear region (\(V_{DS}\) = 50mV is usually fine). ~wl_id_vg_linear_temp_data~
+    * Body current as a function of gate voltage \(I_{BD} = f(V_G)\) in saturation. ~wl_ib_vg_sat_data~
+    * \(I_{DS}\) current noise PSD as a function of frequency \((S_{flicker} + S_{thermal}) = f(freq)\) in saturation and strong inversion. ~wl_noise_data~
+  + For the *WS* transistor set:
+    * Halved Specific current \(I_S/2\). ~ws_is_data~
+    * Pinchoff voltage as a function of gate voltage \(V_P = f(V_G)\). ~ws_vp_vg_data~
+    * Drain current as a function of gate voltage \(I_D = f(V_G)\), in the linear region (\(V_{DS}\) = 50mV is usually fine). ~ws_id_vg_linear_data~
+    * Drain current as a function of gate voltage \(I_D = f(V_G)\) across temperature, in the saturation region. (This is usually the largest dataset). ~ws_id_vg_sat_temp_data~
+    * Drain current as a function of drain voltage \(I_D = f(V_D)\), in strong inversion. ~ws_id_vd_sat_data~
+  + For the *NL* transistor set:
+    * Halved Specific current \(I_S/2\). ~nl_is_data~
+    * Pinchoff voltage as a function of gate voltage \(V_P = f(V_G)\). ~nl_vp_vg_data~
+  + As a sanity check after fitting LAMBDA and UCRIT: drain current as a function of length, for nominal saturation gate and drain voltages, with width fixed to ~wlmax~, length swept from minimum to ~wlmax~. ~sat_region_len_isdata~
+
+The following subsections give some details of how to generate the BSIM simulation data.
+
+**** Calculating specific current
+
+The specific current is defined by \( I_S = \left[ 2V_t\left( d\sqrt{I_D} / dV_S \right)_{MAX}  \right]^2\), where \(V_t\) is the thermal voltage. This is obtained by setting \(V_D = V_G = V_{DD}\) for NMOS, and \(V_{SS}\) for PMOS, and sweeping \(V_S\) from \(V_{SS}\) to \(V_{DD}\), and finding the maximum value of the derivative of \(\sqrt{I_D}\) w.r.t. \(V_S\).
+
+**** Calculating pinchoff voltage as a function of gate voltage \(V_P = f(V_G)\)
+
+Method provided by [[https://ieeexplore.ieee.org/document/535636][Bucher et al. (1996)]]; the MOS should be biased with \(I_S/2\) at the source, gate and drain shorted, and \(V_G\) swept from \(V_{SS} to V_{DD}\). With this bias arrangement, \(V_S = V_P\). Circuit diagram below:
+
+[[file:images/vp_vg_schem.svg]]
+
+Therefore, \(V_P\) can be measured just by measuring \(V_S\) in this arrangement.
+
+**** Drain current as functions of gate voltage and drain voltage in linear and saturation regions
+
+These are standard DC transistor characterizations, but one should pick the following voltages for the linear and saturation cases, that are included in ~default_params~ when generating ~datalump~ (see the 'Functions and data structures' section):
+
+- ~vdlinearnom~: nominal drain voltage when sweeping \(V_G\) in the linear region (usually 50mV works well).
+- ~vdsatnom~: nominal drain voltage when sweeping \(V_G\) in the saturation region. This should be high enough that the devices are properly into saturation, but not so high as to generate punchthrough. For example in a 0.18µm process with \(V_{DD} = 1.8V\), 1.5V worked well.
+- ~vgsatnom~: nominal gate voltage when sweeping \(V_D\) in strong inversion. Similar to ~vdsatnom~, this should be high enough so that the device is strongly overdriven, but not all the way up to \(V_{DD}\). For example, 1.1V worked well with the aforementioned 0.18µm process.
+
+**** Bulk current as a function of gate voltage in saturation
+
+Again standard DC transistor characterization, sweeping \(V_G\) in saturation. Ensure that the current being measured is drain to base current, it should form a positive bell-curve when plotted (for nMOS).
+
+**** Noise simulation
+
+Again a standard setup, the transistor should be in saturation and strong inversion, and the noise current monitored with a probe at the drain vs frequency. The BSIM results should show a combination of thermal and flicker noise.
+
+*N.B. For some reason EKV always predicts a much higher thermal noise floor than it should. A fitting parameter ~thermfudge~ is therefore included in order to ensure the predicted thermal noise is brought into line with the BSIM data. This is a stopgap solution; more investigation into why the EKV model overpredicts noise like this is ongoing.*
+
+*** Sim data formatting
+
+Data is expected to be manually supplied by the user, using data structures of type ~numpy.ndarray~. These structures should be stored as attributes of a ~DataStore~ object. The same ~DataStore~ should also contain parametric data, some defaults are given in ~default_params~.
+The ~data_ingest~ function is provided to give an example of how data can be imported from a cadence ~.vcsv~ export, creating an output ~DataStore~ called ~datalump~ (see 'Functions and data structures' for more info). *N.B.:* /This function will not work out of the box, unless you happen to use my exact variable naming and simulation scheme in cadence, it is provided as an example only./ If someone has a more robust and general method for importing the data, please contact me or submit a PR.
+
+*** MOS Initialization
+
+At first, a MOS model should be initialized with a dictionary that uses the list of BSIM values extracted directly from the model, as follows:
+
+#+BEGIN_SRC python
+import ekv
+
+initparams = {
+    'TNOM' : TNOM_BSIM,
+    'TOX' : TOX_BSIM,
+    'NSUB' : NCH_BSIM,
+    'XJ' : XJ_BSIM,
+    'DW' : -2*WINT_BSIM,
+    'DL' : -2*LINT_BSIM,
+    'U0' : U0_BSIM,
+    'VMAX' : VSAT_BSIM,
+    'IBB' : BETA0_BSIM/mp.sqrt(epsi*XJ_BSIM/COX),
+    'IBA' : IBB*ALPHA1_BSIM
+}
+
+mymos = ekv.MOS(initparams)
+#+END_SRC
+
+where ~epsi~ is \(\epsilon_{Si}\) = permittivity of silicon, and ~COX~ is ~epsiox/TOX~ (~epsiox~ is \(\epsilon_{SiO_2}\) = permittivity of silicon dioxide). MOS objects are n-type by default, add ~'polarity':'p'~ to initparams. Fundamental parameters are accessible as attributes, and derived values are accessible via functions. Fundamental parameters that are temperature dependent can be accessed via their attribute, or with their corresponding temperature dependent function. For example, ~mymos.PHI~ returns ~PHI~ at nominal temperature, but ~mymos.PHIt()~ returns PHI for the current value of ~mymos.T~.
+
+*** Conversion steps
+
+Conversion steps can be run one by one with calls to ~lsq_wrapper()~, or in a sequence by calling ~full_run()~. ~full_run()~ can take an input argument ~proclist~ equal to a list of strings, with each string declaring a fitting stage to run. If no such list is provided, the default is used. The default conversion steps are similar to those provided in [[https://link.springer.com/chapter/10.1007%2F978-1-4020-8573-4_3][the chapter from Stefanovic et al.]], but tweaked to improve fit. The program is designed to be modular, fitting stages can be easily added, modified, and removed. 
+
+The original sequence from Stefanovic is as follows, line ends with the stage name as in ~resid_func_lookup~:
+
+- Fit ~VTO~, ~PHI~, and ~GAMMA~, against ~wl_vp_vg_temp_data~ (only nominal temp fitting required): ~vto_phi_gamma~
+- Fit ~LETA~ against ~ws_vp_vg_data~: ~leta~
+- Fit ~WETA~ against ~nl_vp_vg_data~: ~weta~
+- Fit ~LK~ and ~Q0~ against ~ws_vp_vg_data~ through VTH calculation.: ~lk_q0~
+- Fit ~KP~ and ~E0~ against ~wl_id_vg_vb_linear_data~: ~kp_e0~
+- Fit ~DL~ against ~ws_id_vg_linear_data~ (RSH is mentioned in chapter, but not in EKV model.): ~dl~
+- Fit ~UCRIT~ and ~LAMBDA~ against ~ws_id_vd_sat_data~: ~ucrit_lambda~
+- Fit ~UCRIT~ against ~ws_id_vg_sat_temp_data~ (only nominal temp fitting required): ~ucrit~
+- Fit ~LAMBDA~ against ~ws_id_vd_sat_data~: ~lambda~
+- Fit ~IBA~, ~IBB~, ~IBN~ against ~wl_ib_vg_sat_data~: ~iba_ibb_ibn~
+- Fit ~TCV~ against ~wl_vp_vg_temp_data~: ~tcv~
+- Fit ~BEX~ against ~wl_id_vg_linear_temp_data~: ~bex~
+- Fit ~UCEX~ against ~ws_id_vg_sat_temp_data~: ~ucex~
+- Fit ~KF~ and ~AF~ against ~wl_noise_data~: ~kf_af~
+
+This exact sequence runs into some issues, particularly around the ~ucrit~ stage. The following refined sequence is recommended instead (just stage names given below, details for each stage are given in ~resid_func_lookup~):
+
+~vto_phi_gamma~, ~leta~, ~weta~, ~lk_q0~, ~kp_e0~, ~kp_e0~, ~dl~, ~lambda_ucrit~, ~lambda~, ~iba_ibb_ibn~, ~tcv~, ~bex~, ~ucex~, ~kf_af~.
+
+This sequence will likely need to be tweaked depending on the input data, in the same way that the original published sequence required tweaking.
+
+*** Functions and data structures
+
+The following data structures, classes, and functions are required to run a conversion.
+
+- ~global_gmin~ and ~global_lmin~: These are global values that should be set as soon as the module is imported. ~global_gmin~ is the ~gmin~ setting used during the BSIM simulations (usually 1e-12). ~global_lmin~ should be the minimum transistor length in the process (used to limit ~DL~ to sensible values).
+- ~DataStore~: A class to store all relevant data for a conversion. This should be initialized by loading all relevant BSIM simulation data, as well as the simulation parameters listed in the ~default_params~ dictionary. When a ~DataStore~ is constructed, it loads attributes based on the ~filenamedict~ handed to it, the ~default_params~ in the module, as well as any additional keyword args handed to it.
+- ~data_ingest(filenamedict, **params)~: gives an example of how to construct a ~DataStore~ object based on ~.vcsv~ datafiles.
+- ~resid_func_lookup~: Dictionary that gives details of what to do at each stage. Used by ~lsq_wrapper()~ to determine which function to use to calculate residuals, which dataset to pull from ~datalump~, which ~MOS~ attributes are being fitted, which plotting function to call (if any), and any other options to pass to ~least_squares()~. 
+- ~lsq_wrapper(stage,mos,datalump)~: wrapper for ~least_squares()~ that uses ~resid_func_lookup~ to determine how to calculate residuals based on the stage passed to it.
+- ~full_run(datalump: DataStore, mos: ekv.MOS, proclist=[])~: Takes a list of stages and runs ~lsq_wrapper()~ for each stage, also times each stage and prints status to keep track of progress.
+
+**** Global variables
+
+- ~global_gmin~: Defaults to ~1e-12~. Should be the same as the ~gmin~ value used to generate BSIM simulation data. Used to correct currents when fitting against bulk current.
+- ~global_lmin~: Defaults to ~180e-9~. Should be set to the minimum possible transistor length, used to set a bound for ~DL~, such that it does not allow ~Leff~ to become physically impossible.
+- ~global_dec_targ~: Defaults to ~50~. Target dataset length for the decimator to aim for. Smaller lengths will speed up computation at the cost of accuracy.
+- ~global_dec_flag~: Defaults to ~True~. Enable or disable the decimator. If enabled, datasets will be decimated down towards the target value of ~global_dec_targ~, using a simple decimation procedure. For best accuracy, this should be turned off, but if datasets are very large, the coversion will take an extremely long time to resolve. See the following section on data decimation for more details.
+
+**** ~weightfunc()~
+
+This function requires a little extra explanation. It is called in some fitting functions e.g. ~find_lambda_ucrit()~. Its purpose is to skew residuals, by default so that residuals of transistors with smaller lengths are multiplied to be bigger. This means that the least squares process will try to prioritize fitting the shortest length devices. This function was found by trial and error, as no definitive function is provided in [[https://link.springer.com/chapter/10.1007%2F978-1-4020-8573-4_3][the chapter from Stefanovic et al.]], it is just stated that the residuals of the shortest devices are given more weight. This weight function can cause problems, especially when short channel effects become considerable. Sometimes it is useful to redefine ~weightfunc()~ to alter its behaviour, or disable it altogether. The easiest way to disable it is with a ~lambda~ definition, just after importing py_bsim2ekv:
+
+#+BEGIN_SRC python
+
+import importlib
+import py_bsim2ekv as b2e
+importlib.reload(b2e)
+
+b2e.weightfunc = lambda x: 1.0
+
+#+END_SRC
+
+The above code snippet shows how ~weightfunc()~ can simply be replaced with a ~lambda~ that always returns ~1.0~. This will remove the length-dependent weighting entirely. The ~importlib.reload()~ may not be necessary, but seems to be required if changes are made in the module for them to propagate to the notebook.
+
+** Known Issues
+
+There are several known issues with the process, these are hard to resolve, mostly arising from the fitting procedure failing to find a good enough fit, or generating unfeasible parameter values.
+
+The first conversion step ~vto_phi_gamma~ will often overfit and generate physically unreasonable values for ~PHI~ and ~GAMMA~. These values can be limited with bounds if they become too unreasonable, but even physically unreasonable values can generate a good fit. Whether or not bounds should be applied requires trial and error.
+
+Appropriate values of ~E0~ are unclear. The original EKV spec states that ~E0~ should have values in the range of 1e6 and 1e12 or so, yet the BSIM2EKV chapter presents a result with an ~E0~ value of 45 V/m. In the example NMOS dataset a value of 2.5 is settled on, requiring two runs of the stage ~kp_e0~ to converge. Sometimes ~lsq_wrapper()~ will settle on a negative value for ~E0~, if this occurs the stage should be re-run.
+
+Fitting of \(I_D = f(V_D)\) data deviates fairly significantly (approx 35% worst case drain current error observed) for midrange submicron device lengths, but returns to good agreement for longer devices and the shortest devices. This seems to be a fundamental limit of the EKV model, but could potentially be corrected by adding factors that modulate ~KP~ based on length.
+
+Poor fitting in the ~VTH~ curve is sometimes observed when fitting for ~LK~ and ~Q0~, this doesn't always indicate a poor overall fit for the model, but will produce some small error when predicting threshold voltage. This appears to arise because of a fundamental limitation in EKV itself, rather than just a fitting problem.
+
+
