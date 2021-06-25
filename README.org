@@ -141,7 +141,7 @@ initparams = {
 mymos = ekv.MOS(initparams)
 #+END_SRC
 
-where ~epsi~ is \epsilon_{Si} = permittivity of silicon, and ~COX~ is ~epsiox/TOX~ (~epsiox~ is \epsilon_{SiO_{2}} = permittivity of silicon dioxide). MOS objects are n-type by default, add ~&#39;polarity&#39; : &#39;p&#39;~ to initparams. Fundamental parameters are accessible as attributes, and derived values are accessible via functions. Fundamental parameters that are temperature dependent can be accessed via their attribute, or with their corresponding temperature dependent function. For example, ~mymos.PHI~ returns ~PHI~ at nominal temperature, but ~mymos.PHIt()~ returns PHI for the current value of ~mymos.T~.
+where ~epsi~ is \epsilon_{Si} = permittivity of silicon, and ~COX~ is ~epsiox/TOX~ (~epsiox~ is \epsilon_{SiO_{2}} = permittivity of silicon dioxide). MOS objects are n-type by default, add ~‍'polarity' : 'p'‍~ to initparams. Fundamental parameters are accessible as attributes, and derived values are accessible via functions. Fundamental parameters that are temperature dependent can be accessed via their attribute, or with their corresponding temperature dependent function. For example, ~mymos.PHI~ returns ~PHI~ at nominal temperature, but ~mymos.PHIt()~ returns PHI for the current value of ~mymos.T~.
 
 *** Conversion steps
 
