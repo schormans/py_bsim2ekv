@@ -5,7 +5,7 @@ The output of this program should therefore be considered with caution; it is de
 
 ** Overview
 
-py_bsim2ekv aims to recreate the functionality of the now unavailable BSIM2EKV tool, originally developed by the [[https://www.epfl.ch/labs/iclab/ekv/model/][IC Lab at EPFL]]. The tool comprises a limited version of the ekv model (rewritten in python, largely using [[https://mpmath.org/][mpmath]]; this lets us do some tricks to solve some things more easily, but is slow), and functions to convert BSIM model parameters to EKV parameters. The conversion method essentially follows the procedure set out in the book chapter [[https://link.springer.com/chapter/10.1007%2F978-1-4020-8573-4_3][BSIM to EKV conversion]] from /'Structured Analog CMOS Design'/ (unfortunately the chapter itself is behind a paywall). The process should ideally be fully automatic, once the required parameters and simulation data are provided, but can sometimes need tweaking to get good parametric agreement. I would expect performance to be better with older larger nodes (e.g. 0.5µm), but have acheived decent results with a 0.18µm process.
+py_bsim2ekv aims to recreate the functionality of the now unavailable BSIM2EKV tool, originally developed by the [[https://www.epfl.ch/labs/iclab/ekv/model/][IC Lab at EPFL]]. The tool comprises a limited version of the ekv model (rewritten in python, largely using [[https://mpmath.org/][mpmath]]; this lets us do some tricks to solve some things more easily, but is slow), and functions to convert BSIM model parameters to EKV parameters. The conversion method essentially follows the procedure set out in the book chapter [[https://link.springer.com/chapter/10.1007%2F978-1-4020-8573-4_3][BSIM to EKV conversion]] from /Structured Analog CMOS Design/ (unfortunately the chapter itself is behind a paywall). The process should ideally be fully automatic, once the required parameters and simulation data are provided, but can sometimes need tweaking to get good parametric agreement. I would expect performance to be better with older larger nodes (e.g. 0.5µm), but have acheived decent results with a 0.18µm process.
 
 *The software assumes that you have some BSIM simulator to hand to generate input data*
 
@@ -35,7 +35,7 @@ py_bsim2ekv aims to recreate the functionality of the now unavailable BSIM2EKV t
 
 The EKV model always considers voltages with reference to the bulk, in the nominal NMOS case, this makes no difference, but should the bulk voltage be raised, or in the case of PMOS devices, this can become unintuitive. Voltages provided to the converter should be preprocessed to be in this bulk-referenced form already. There are some stages that require bulk voltage stepping, in these cases, voltages should be given referenced to the nominal bulk voltage, and the conversion step will adjust the other node voltages to compensate for bulk voltage changes appropriately.
 
-*N.B. for PMOS simulations:* To make the data export easier for the PMOS case, it is recommended to set bulk (and vdd) to be the ground reference, and define the node that would have been ground to be \(-V_{DD}\).
+*N.B. for PMOS simulations:* To make the data export easier for the PMOS case, it is recommended to set bulk (and vdd) to be the ground reference, and define the node that would have been ground to be -V_{DD}.
 
 *** PMOS handling
 
@@ -49,69 +49,69 @@ This section aims to summarize the steps presented in the original [[https://lin
 
 *** Input parameters and required data
 
-- Minimum transistor width and length, \(W_{min}\) and \(L_{min}\) respectively.
-- Supply voltage \(V_{DD}\).
+- Minimum transistor width and length, W_{min} and L_{min} respectively.
+- Supply voltage V_{DD}.
 - Transistor sets:
-  + Wide/long (*WL*): if \(L_{min} \lt 0.35µm\), \(W_{max}/L_{max}\) = 10µm/10µm, else \(W_{max}/L_{max}\) = 25µm/25µm
-  + Wide/short set (*WS*): \(W_{max}/(L_{min}, 1.2L_{min}, 1.4L_{min}, 1.6L_{min}, 1.8L_{min}, 2L_{min}, 2.4L_{min}, 2.8L_{min}, 3.2L_{min}, 3.6L_{min}, 4L_{min})\)
-  + Narrow/long set (*NL*): \((W_{min}, 2W_{min})/L_{max}\)
+  + Wide/long (*WL*): if L_{min} \lt 0.35µm, W_{max}/L_{max} = 10µm/10µm, else W_{max}/L_{max} = 25µm/25µm
+  + Wide/short set (*WS*): W_{max}/(L_{min}, 1.2L_{min}, 1.4L_{min}, 1.6L_{min}, 1.8L_{min}, 2L_{min}, 2.4L_{min}, 2.8L_{min}, 3.2L_{min}, 3.6L_{min}, 4L_{min})
+  + Narrow/long set (*NL*): (W_{min}, 2W_{min})/L_{max}
 - BSIM parameters (directly extracted from model file):
   + TNOM, TOX, XJ, NCH, U0, VSAT, WINT, LINT, BETA0, ALPHA1
 - Simulation results:
-  + When sweeping temperature, the following steps are recommended: ({-40,-20,27,80,120}ºC).
+  + When sweeping temperature, the following steps are recommended: ({-40,-20,27,80,120}°C).
   + Unless temperature is mentioned, simulate at T = TNOM.
   + Each bullet has a variable name appended: the program expects these variables to contain the simulation data.
   + For the *WL* transistor:
-    * Halved Specific current \(I_S/2\) across temperature. ~wl_is_temp_data~
-    * Pinchoff voltage as a function of gate voltage \(V_P = f(V_G)\) across temperature. ~wl_vp_vg_temp_data~
-    * Drain current as a function of gate voltage \(I_D = f(V_G)\) across bulk voltages, in the linear region (\(V_{DS}\) = 50mV is usually fine). ~wl_id_vg_vb_linear_data~
-      - For nMOS \(V_B\) should range from \(-0.5V_{DD}\) to 0
-      - For pMOS \(V_B\) should range from \(V_{DD}\) to \(V_{DD} + 0.5V_{DD}\)
-    * Drain current as a function of gate voltage \(I_D = f(V_G)\) across temperature, in the linear region (\(V_{DS}\) = 50mV is usually fine). ~wl_id_vg_linear_temp_data~
-    * Body current as a function of gate voltage \(I_{BD} = f(V_G)\) in saturation. ~wl_ib_vg_sat_data~
-    * \(I_{DS}\) current noise PSD as a function of frequency \((S_{flicker} + S_{thermal}) = f(freq)\) in saturation and strong inversion. ~wl_noise_data~
+    * Halved Specific current I_{S}/2 across temperature. ~wl_is_temp_data~
+    * Pinchoff voltage as a function of gate voltage V_{P} = f(V_{G}) across temperature. ~wl_vp_vg_temp_data~
+    * Drain current as a function of gate voltage I_{D} = f(V_{G}) across bulk voltages, in the linear region (V_{DS} = 50mV is usually fine). ~wl_id_vg_vb_linear_data~
+      - For nMOS V_{B} should range from -0.5V_{DD} to 0
+      - For pMOS V_{B} should range from V_{DD} to V_{DD} + 0.5V_{DD}
+    * Drain current as a function of gate voltage I_{D} = f(V_{G}) across temperature, in the linear region (V_{DS} = 50mV is usually fine). ~wl_id_vg_linear_temp_data~
+    * Body current as a function of gate voltage I_{BD} = f(V_{G}) in saturation. ~wl_ib_vg_sat_data~
+    * I_{DS} current noise PSD as a function of frequency (S_{flicker} + S_{thermal}) = f(freq) in saturation and strong inversion. ~wl_noise_data~
   + For the *WS* transistor set:
-    * Halved Specific current \(I_S/2\). ~ws_is_data~
-    * Pinchoff voltage as a function of gate voltage \(V_P = f(V_G)\). ~ws_vp_vg_data~
-    * Drain current as a function of gate voltage \(I_D = f(V_G)\), in the linear region (\(V_{DS}\) = 50mV is usually fine). ~ws_id_vg_linear_data~
-    * Drain current as a function of gate voltage \(I_D = f(V_G)\) across temperature, in the saturation region. (This is usually the largest dataset). ~ws_id_vg_sat_temp_data~
-    * Drain current as a function of drain voltage \(I_D = f(V_D)\), in strong inversion. ~ws_id_vd_sat_data~
+    * Halved Specific current I_{S}/2. ~ws_is_data~
+    * Pinchoff voltage as a function of gate voltage V_{P} = f(V_{G}). ~ws_vp_vg_data~
+    * Drain current as a function of gate voltage I_{D} = f(V_{G}), in the linear region (V_{DS} = 50mV is usually fine). ~ws_id_vg_linear_data~
+    * Drain current as a function of gate voltage I_{D} = f(V_{G}) across temperature, in the saturation region. (This is usually the largest dataset). ~ws_id_vg_sat_temp_data~
+    * Drain current as a function of drain voltage I_{D} = f(V_{D}), in strong inversion. ~ws_id_vd_sat_data~
   + For the *NL* transistor set:
-    * Halved Specific current \(I_S/2\). ~nl_is_data~
-    * Pinchoff voltage as a function of gate voltage \(V_P = f(V_G)\). ~nl_vp_vg_data~
+    * Halved Specific current I_{S}/2. ~nl_is_data~
+    * Pinchoff voltage as a function of gate voltage V_{P} = f(V_{G}). ~nl_vp_vg_data~
   + As a sanity check after fitting LAMBDA and UCRIT: drain current as a function of length, for nominal saturation gate and drain voltages, with width fixed to ~wlmax~, length swept from minimum to ~wlmax~. ~sat_region_len_isdata~
 
 The following subsections give some details of how to generate the BSIM simulation data.
 
 **** Calculating specific current
 
-The specific current is defined by \( I_S = \left[ 2V_t\left( d\sqrt{I_D} / dV_S \right)_{MAX}  \right]^2\), where \(V_t\) is the thermal voltage. This is obtained by setting \(V_D = V_G = V_{DD}\) for NMOS, and \(V_{SS}\) for PMOS, and sweeping \(V_S\) from \(V_{SS}\) to \(V_{DD}\), and finding the maximum value of the derivative of \(\sqrt{I_D}\) w.r.t. \(V_S\).
+The specific current is defined by [[file:images/is_eqn.svg]], where V_{t} is the thermal voltage. This is obtained by setting V_{D} = V_{G} = V_{DD} for NMOS, and V_{SS} for PMOS, and sweeping V_{S} from V_{SS} to V_{DD}, and finding the maximum value of the derivative of √I_{D} w.r.t. V_{S}.
 
-**** Calculating pinchoff voltage as a function of gate voltage \(V_P = f(V_G)\)
+**** Calculating pinchoff voltage as a function of gate voltage V_{P} = f(V_{G})
 
-Method provided by [[https://ieeexplore.ieee.org/document/535636][Bucher et al. (1996)]]; the MOS should be biased with \(I_S/2\) at the source, gate and drain shorted, and \(V_G\) swept from \(V_{SS} to V_{DD}\). With this bias arrangement, \(V_S = V_P\). Circuit diagram below:
+Method provided by [[https://ieeexplore.ieee.org/document/535636][Bucher et al. (1996)]]; the MOS should be biased with I_{S}/2 at the source, gate and drain shorted, and V_{G} swept from V_{SS} to V_{DD}. With this bias arrangement, V_{S} = V_{P}. Circuit diagram below:
 
 [[file:images/vp_vg_schem.svg]]
 
-Therefore, \(V_P\) can be measured just by measuring \(V_S\) in this arrangement.
+Therefore, V_{P} can be measured just by measuring V_{S} in this arrangement.
 
 **** Drain current as functions of gate voltage and drain voltage in linear and saturation regions
 
 These are standard DC transistor characterizations, but one should pick the following voltages for the linear and saturation cases, that are included in ~default_params~ when generating ~datalump~ (see the 'Functions and data structures' section):
 
-- ~vdlinearnom~: nominal drain voltage when sweeping \(V_G\) in the linear region (usually 50mV works well).
-- ~vdsatnom~: nominal drain voltage when sweeping \(V_G\) in the saturation region. This should be high enough that the devices are properly into saturation, but not so high as to generate punchthrough. For example in a 0.18µm process with \(V_{DD} = 1.8V\), 1.5V worked well.
-- ~vgsatnom~: nominal gate voltage when sweeping \(V_D\) in strong inversion. Similar to ~vdsatnom~, this should be high enough so that the device is strongly overdriven, but not all the way up to \(V_{DD}\). For example, 1.1V worked well with the aforementioned 0.18µm process.
+- ~vdlinearnom~: nominal drain voltage when sweeping V_{G} in the linear region (usually 50mV works well).
+- ~vdsatnom~: nominal drain voltage when sweeping V_{G} in the saturation region. This should be high enough that the devices are properly into saturation, but not so high as to generate punchthrough. For example in a 0.18µm process with V_{DD} = 1.8V, 1.5V worked well.
+- ~vgsatnom~: nominal gate voltage when sweeping V_{D} in strong inversion. Similar to ~vdsatnom~, this should be high enough so that the device is strongly overdriven, but not all the way up to V_{DD}. For example, 1.1V worked well with the aforementioned 0.18µm process.
 
 **** Bulk current as a function of gate voltage in saturation
 
-Again standard DC transistor characterization, sweeping \(V_G\) in saturation. Ensure that the current being measured is drain to base current, it should form a positive bell-curve when plotted (for nMOS).
+Again standard DC transistor characterization, sweeping V_{G} in saturation. Ensure that the current being measured is drain to base current, it should form a positive bell-curve when plotted (for nMOS).
 
 **** Noise simulation
 
 Again a standard setup, the transistor should be in saturation and strong inversion, and the noise current monitored with a probe at the drain vs frequency. The BSIM results should show a combination of thermal and flicker noise.
 
-*N.B. For some reason EKV always predicts a much higher thermal noise floor than it should. A fitting parameter ~thermfudge~ is therefore included in order to ensure the predicted thermal noise is brought into line with the BSIM data. This is a stopgap solution; more investigation into why the EKV model overpredicts noise like this is ongoing.*
+*N.B. For some reason EKV always predicts a much higher thermal noise floor than it should. A fitting parameter* ~thermfudge~ *is therefore included in order to ensure the predicted thermal noise is brought into line with the BSIM data. This is a stopgap solution; more investigation into why the EKV model overpredicts noise like this is ongoing.*
 
 *** Sim data formatting
 
@@ -141,7 +141,7 @@ initparams = {
 mymos = ekv.MOS(initparams)
 #+END_SRC
 
-where ~epsi~ is \(\epsilon_{Si}\) = permittivity of silicon, and ~COX~ is ~epsiox/TOX~ (~epsiox~ is \(\epsilon_{SiO_2}\) = permittivity of silicon dioxide). MOS objects are n-type by default, add ~'polarity':'p'~ to initparams. Fundamental parameters are accessible as attributes, and derived values are accessible via functions. Fundamental parameters that are temperature dependent can be accessed via their attribute, or with their corresponding temperature dependent function. For example, ~mymos.PHI~ returns ~PHI~ at nominal temperature, but ~mymos.PHIt()~ returns PHI for the current value of ~mymos.T~.
+where ~epsi~ is \epsilon_{Si} = permittivity of silicon, and ~COX~ is ~epsiox/TOX~ (~epsiox~ is \epsilon_{SiO_{2}} = permittivity of silicon dioxide). MOS objects are n-type by default, add ~&#39;polarity&#39; : &#39;p&#39;~ to initparams. Fundamental parameters are accessible as attributes, and derived values are accessible via functions. Fundamental parameters that are temperature dependent can be accessed via their attribute, or with their corresponding temperature dependent function. For example, ~mymos.PHI~ returns ~PHI~ at nominal temperature, but ~mymos.PHIt()~ returns PHI for the current value of ~mymos.T~.
 
 *** Conversion steps
 
@@ -212,7 +212,7 @@ The first conversion step ~vto_phi_gamma~ will often overfit and generate physic
 
 Appropriate values of ~E0~ are unclear. The original EKV spec states that ~E0~ should have values in the range of 1e6 and 1e12 or so, yet the BSIM2EKV chapter presents a result with an ~E0~ value of 45 V/m. In the example NMOS dataset a value of 2.5 is settled on, requiring two runs of the stage ~kp_e0~ to converge. Sometimes ~lsq_wrapper()~ will settle on a negative value for ~E0~, if this occurs the stage should be re-run.
 
-Fitting of \(I_D = f(V_D)\) data deviates fairly significantly (approx 35% worst case drain current error observed) for midrange submicron device lengths, but returns to good agreement for longer devices and the shortest devices. This seems to be a fundamental limit of the EKV model, but could potentially be corrected by adding factors that modulate ~KP~ based on length.
+Fitting of I_{D} = f(V_{D}) data deviates fairly significantly (approx 35% worst case drain current error observed) for midrange submicron device lengths, but returns to good agreement for longer devices and the shortest devices. This seems to be a fundamental limit of the EKV model, but could potentially be corrected by adding factors that modulate ~KP~ based on length.
 
 Poor fitting in the ~VTH~ curve is sometimes observed when fitting for ~LK~ and ~Q0~, this doesn't always indicate a poor overall fit for the model, but will produce some small error when predicting threshold voltage. This appears to arise because of a fundamental limitation in EKV itself, rather than just a fitting problem.
 
